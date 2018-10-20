@@ -6,3 +6,8 @@
 /parser/location.hh
 /parser/position.hh
 /parser/stack.hh
+
+.cproject
+.project
+.settings
+

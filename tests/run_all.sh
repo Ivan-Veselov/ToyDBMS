@@ -14,5 +14,5 @@ for ds in $(ls datasets); do
             echo OK
         fi
     done
-    cd ..
+    cd ../..
 done
