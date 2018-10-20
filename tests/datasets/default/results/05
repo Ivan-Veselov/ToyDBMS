@@ -1,0 +1,4 @@
+employees.id	employees.name	employees.salary	employees.manager
+1	Ivan	500	-1
+7	Mikhail	500	5
+
