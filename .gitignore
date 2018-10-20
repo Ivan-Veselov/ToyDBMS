@@ -1,0 +1,8 @@
+*.o
+*exe
+*/dbparser.tab.*
+*/dbparser.output
+*.yy.cc
+/parser/location.hh
+/parser/position.hh
+/parser/stack.hh
