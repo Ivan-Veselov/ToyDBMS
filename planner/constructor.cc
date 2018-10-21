@@ -71,12 +71,12 @@ struct Source {
 };
 
 struct PredicatesLists {
-	std::vector<const AttributePredicate*> joinPredicates;
+	std::vector<AttributePredicate*> joinPredicates;
 
-	std::vector<const ConstPredicate*> filterPredicates;
+	std::vector<ConstPredicate*> filterPredicates;
 };
 
-static void for_each_simple_predicate(const Predicate &predicate, std::function<void(const Predicate&)> action) {
+static void for_each_simple_predicate(Predicate &predicate, std::function<void(Predicate&)> action) {
     switch(predicate.type) {
 		case Predicate::Type::CONST:
 		case Predicate::Type::ATTR:
@@ -100,22 +100,21 @@ static void for_each_simple_predicate(const Predicate &predicate, std::function<
 }
 
 static const PredicatesLists createPredicatesLists(const Query &query) {
-	const Predicate& predicate = *query.where;
+	Predicate& predicate = *query.where;
 
 	PredicatesLists lists;
 
 	for_each_simple_predicate(
 		predicate,
-		[&lists](const auto &pred) {
+		[&lists](auto &pred) {
 			switch(pred.type) {
 				case Predicate::Type::CONST: {
-					lists.filterPredicates.push_back(&dynamic_cast<const ConstPredicate&>(pred));
+					lists.filterPredicates.push_back(&dynamic_cast<ConstPredicate&>(pred));
 					break;
 				}
 
 				case Predicate::Type::ATTR: {
-					const AttributePredicate& attributePredicate =
-						dynamic_cast<const AttributePredicate&>(pred);
+					AttributePredicate& attributePredicate = dynamic_cast<AttributePredicate&>(pred);
 
 					if (attributePredicate.relation != Predicate::Relation::EQUAL) {
 						throw std::runtime_error("Inequality attribute predicates are not yet supported");
@@ -159,7 +158,7 @@ static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryTables
 
 static std::vector<std::unique_ptr<Operator>> applyJoins(
 	std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
-	const std::vector<const AttributePredicate*> &joinPredicates
+	const std::vector<AttributePredicate*> &joinPredicates
 ) {
 	// todo
 
@@ -172,12 +171,23 @@ static std::vector<std::unique_ptr<Operator>> applyJoins(
 	return isolatedTables;
 }
 
-std::unique_ptr<Operator> create_plan(const Query &query){
+std::unique_ptr<Operator> create_plan(const Query &query) {
 	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = getQueryTables(query);
 
 	PredicatesLists predicatesLists = createPredicatesLists(query);
 
-	// add filters
+	for (ConstPredicate *predicate : predicatesLists.filterPredicates) {
+		std::string tableName = table_name(predicate->attribute);
+
+		auto it = tables.find(tableName);
+		if (it == tables.end()) {
+			throw std::runtime_error("Unknown table: " + tableName);
+		}
+
+		tables[tableName] = std::make_unique<Filter>(
+			std::move(tables[tableName]), std::move(std::make_unique<ConstPredicate>(*predicate))
+		);
+	}
 
 	std::vector<std::unique_ptr<Operator>> isolatedTables = applyJoins(
 		tables,
