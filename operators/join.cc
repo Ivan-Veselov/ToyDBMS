@@ -4,7 +4,7 @@
 
 namespace ToyDBMS {
 
-Row NLJoin::next(){
+Row AbstractNLJoin::next(){
     if(!current_left)
         current_left = left->next();
 
@@ -21,9 +21,9 @@ Row NLJoin::next(){
             if(!current_right) return {};
         }
 
-        if(current_left[left_index] != current_right[right_index]){
-            current_right = right->next();
-            continue;
+        if (!isAcceptable(current_left, current_right)) {
+        	current_right = right->next();
+			continue;
         }
 
         std::vector<Value> values = current_left.values;
@@ -35,10 +35,18 @@ Row NLJoin::next(){
     }
 }
 
-void NLJoin::reset(){
+void AbstractNLJoin::reset(){
     left->reset();
     right->reset();
     current_left = {};
+}
+
+bool NLJoin::isAcceptable(const Row &leftRow, const Row &rightRow) {
+	return leftRow[left_index] == rightRow[right_index];
+}
+
+bool CrossJoin::isAcceptable(const Row &leftRow, const Row &rightRow) {
+	return true;
 }
 
 }

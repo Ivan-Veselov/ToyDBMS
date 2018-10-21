@@ -2,6 +2,7 @@
 #include <functional>
 #include <iterator>
 #include <stdexcept>
+#include <unordered_map>
 #include "constructor.h"
 
 #include "../operators/datasource.h"
@@ -69,8 +70,130 @@ struct Source {
     }
 };
 
+struct PredicatesLists {
+	std::vector<const AttributePredicate*> joinPredicates;
+
+	std::vector<const ConstPredicate*> filterPredicates;
+};
+
+static void for_each_simple_predicate(const Predicate &predicate, std::function<void(const Predicate&)> action) {
+    switch(predicate.type) {
+		case Predicate::Type::CONST:
+		case Predicate::Type::ATTR:
+			action(predicate);
+			break;
+
+		case Predicate::Type::AND: {
+			const auto &pred = dynamic_cast<const ANDPredicate&>(predicate);
+			for_each_simple_predicate(*pred.left, action);
+			for_each_simple_predicate(*pred.right, action);
+			break;
+		}
+
+		case Predicate::Type::INQUERY:
+		case Predicate::Type::OR:
+			throw std::runtime_error("OR and INQUERY predicates are not yet supported");
+
+		default:
+			throw std::runtime_error("encountered a predicate not yet supported");
+    }
+}
+
+static const PredicatesLists createPredicatesLists(const Query &query) {
+	const Predicate& predicate = *query.where;
+
+	PredicatesLists lists;
+
+	for_each_simple_predicate(
+		predicate,
+		[&lists](const auto &pred) {
+			switch(pred.type) {
+				case Predicate::Type::CONST: {
+					lists.filterPredicates.push_back(&dynamic_cast<const ConstPredicate&>(pred));
+					break;
+				}
+
+				case Predicate::Type::ATTR: {
+					const AttributePredicate& attributePredicate =
+						dynamic_cast<const AttributePredicate&>(pred);
+
+					if (attributePredicate.relation != Predicate::Relation::EQUAL) {
+						throw std::runtime_error("Inequality attribute predicates are not yet supported");
+					}
+
+					lists.joinPredicates.push_back(&attributePredicate);
+					break;
+				}
+
+				case Predicate::Type::AND:
+					throw std::runtime_error("Missed AND predicate detected");
+
+				case Predicate::Type::INQUERY:
+				case Predicate::Type::OR:
+					throw std::runtime_error("OR and INQUERY predicates are not yet supported");
+
+				default:
+					throw std::runtime_error("encountered a predicate not yet supported");
+		    }
+		}
+	);
+
+	return lists;
+}
+
+static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryTables(const Query &query) {
+	std::unordered_map<std::string, std::unique_ptr<Operator>> tables(query.from.size());
+
+	for (const std::unique_ptr<FromPart> &fromPart : query.from) {
+		if (fromPart->type != FromPart::Type::TABLE) {
+			throw std::runtime_error("Inner queries are not supported");
+		}
+
+		FromTable& fromTable = dynamic_cast<FromTable&>(*fromPart);
+		std::string table_name = fromTable.table_name;
+		tables[table_name] = std::make_unique<DataSource>("tables/" + table_name + ".csv");
+	}
+
+	return std::move(tables);
+}
+
+static std::vector<std::unique_ptr<Operator>> applyJoins(
+	std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
+	const std::vector<const AttributePredicate*> &joinPredicates
+) {
+	// todo
+
+	std::vector<std::unique_ptr<Operator>> isolatedTables;
+
+	for (std::pair<const std::string, std::unique_ptr<Operator>> &table : tables) {
+		isolatedTables.push_back(std::move(table.second));
+	}
+
+	return isolatedTables;
+}
+
 std::unique_ptr<Operator> create_plan(const Query &query){
-    std::vector<Source> sources;
+	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = getQueryTables(query);
+
+	PredicatesLists predicatesLists = createPredicatesLists(query);
+
+	// add filters
+
+	std::vector<std::unique_ptr<Operator>> isolatedTables = applyJoins(
+		tables,
+		predicatesLists.joinPredicates
+	);
+
+	std::unique_ptr<Operator> resultingOperator = std::move(isolatedTables[0]);
+	for (size_t i = 1; i < isolatedTables.size(); i++) {
+		resultingOperator = std::make_unique<CrossJoin>(
+			std::move(resultingOperator), std::move(isolatedTables[i])
+		);
+	}
+
+	return resultingOperator;
+
+    /*std::vector<Source> sources;
     for(const auto &table : query.from){
         if(table->type == FromPart::Type::QUERY)
             throw std::runtime_error("queries in the FROM clause are not yet implemented");
@@ -122,7 +245,7 @@ std::unique_ptr<Operator> create_plan(const Query &query){
     if(sources.size() != 1)
         throw std::runtime_error("in the current state the system requires a join predicate when two tables are given");
 
-    return sources.front().construct();
+    return sources.front().construct();*/
 }
 
 }
