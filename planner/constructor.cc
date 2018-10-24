@@ -10,6 +10,7 @@
 #include "../operators/filter.h"
 #include "../operators/join.h"
 #include "../operators/projection.h"
+#include "../operators/aliasappender.h"
 
 namespace ToyDBMS {
 
@@ -147,17 +148,28 @@ static const PredicatesLists createPredicatesLists(const Query &query) {
 }
 
 static std::vector<std::string> getTablesNames(const Query &query) {
-	std::vector<std::string> tables(query.from.size());
+	std::vector<std::string> tables;
+	tables.reserve(query.from.size());
 
-	for (size_t i = 0; i < query.from.size(); i++) {
-		const std::unique_ptr<FromPart> &fromPart = query.from[i];
+	for (const std::unique_ptr<FromPart> &fromPart : query.from) {
+		switch (fromPart->type) {
+			case FromPart::Type::TABLE: {
+				FromTable& fromTable = dynamic_cast<FromTable&>(*fromPart);
 
-		if (fromPart->type != FromPart::Type::TABLE) {
-			throw std::runtime_error("Inner queries are not supported");
+				tables.push_back(fromTable.table_name);
+				break;
+			}
+
+			case FromPart::Type::QUERY: {
+				FromQuery& fromQuery = dynamic_cast<FromQuery&>(*fromPart);
+
+				tables.push_back(fromQuery.alias);
+				break;
+			}
+
+			default:
+				throw std::runtime_error("Unsupported FROM part type");
 		}
-
-		FromTable& fromTable = dynamic_cast<FromTable&>(*fromPart);
-		tables[i] = fromTable.table_name;
 	}
 
 	return std::move(tables);
@@ -167,14 +179,30 @@ static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryOperat
 	std::unordered_map<std::string, std::unique_ptr<Operator>> tables(query.from.size());
 
 	for (const std::unique_ptr<FromPart> &fromPart : query.from) {
-		if (fromPart->type != FromPart::Type::TABLE) {
-			throw std::runtime_error("Inner queries are not supported");
+		switch (fromPart->type) {
+			case FromPart::Type::TABLE: {
+				FromTable& fromTable = dynamic_cast<FromTable&>(*fromPart);
+
+				std::string table_name = fromTable.table_name;
+				tables[table_name] = std::make_unique<DataSource>("tables/" + table_name + ".csv");
+				break;
+			}
+
+			case FromPart::Type::QUERY: {
+				FromQuery& fromQuery = dynamic_cast<FromQuery&>(*fromPart);
+
+				std::string alias = fromQuery.alias;
+				tables[alias] = std::make_unique<AliasAppender>(
+					std::move(create_plan(*fromQuery.query)),
+					alias
+				);
+
+				break;
+			}
+
+			default:
+				throw std::runtime_error("Unsupported FROM part type");
 		}
-
-		FromTable& fromTable = dynamic_cast<FromTable&>(*fromPart);
-
-		std::string table_name = fromTable.table_name;
-		tables[table_name] = std::make_unique<DataSource>("tables/" + table_name + ".csv");
 	}
 
 	return std::move(tables);
@@ -281,7 +309,6 @@ static std::unique_ptr<Operator> wrap_in_default_projection(
 std::unique_ptr<Operator> create_plan(const Query &query) {
 	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = getQueryOperators(query);
 
-	// !!!
 	PredicatesLists predicatesLists = createPredicatesLists(query);
 
 	for (ConstPredicate *predicate : predicatesLists.filterPredicates) {
