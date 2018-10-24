@@ -9,6 +9,7 @@
 #include "../operators/datasource.h"
 #include "../operators/filter.h"
 #include "../operators/join.h"
+#include "../operators/projection.h"
 
 namespace ToyDBMS {
 
@@ -101,9 +102,13 @@ static void for_each_simple_predicate(Predicate &predicate, std::function<void(P
 }
 
 static const PredicatesLists createPredicatesLists(const Query &query) {
-	Predicate& predicate = *query.where;
-
 	PredicatesLists lists;
+
+	if (query.where == nullptr) {
+		return lists;
+	}
+
+	Predicate& predicate = *query.where;
 
 	for_each_simple_predicate(
 		predicate,
@@ -141,7 +146,24 @@ static const PredicatesLists createPredicatesLists(const Query &query) {
 	return lists;
 }
 
-static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryTables(const Query &query) {
+static std::vector<std::string> getTablesNames(const Query &query) {
+	std::vector<std::string> tables(query.from.size());
+
+	for (size_t i = 0; i < query.from.size(); i++) {
+		const std::unique_ptr<FromPart> &fromPart = query.from[i];
+
+		if (fromPart->type != FromPart::Type::TABLE) {
+			throw std::runtime_error("Inner queries are not supported");
+		}
+
+		FromTable& fromTable = dynamic_cast<FromTable&>(*fromPart);
+		tables[i] = fromTable.table_name;
+	}
+
+	return std::move(tables);
+}
+
+static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryOperators(const Query &query) {
 	std::unordered_map<std::string, std::unique_ptr<Operator>> tables(query.from.size());
 
 	for (const std::unique_ptr<FromPart> &fromPart : query.from) {
@@ -150,6 +172,7 @@ static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryTables
 		}
 
 		FromTable& fromTable = dynamic_cast<FromTable&>(*fromPart);
+
 		std::string table_name = fromTable.table_name;
 		tables[table_name] = std::make_unique<DataSource>("tables/" + table_name + ".csv");
 	}
@@ -223,9 +246,42 @@ static std::vector<std::unique_ptr<Operator>> applyJoins(
 	return isolatedTables;
 }
 
-std::unique_ptr<Operator> create_plan(const Query &query) {
-	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = getQueryTables(query);
+static std::unique_ptr<Operator> wrap_in_default_projection(
+	std::unique_ptr<Operator> op,
+	const std::vector<std::string> &tablesNames
+) {
+	Header defaultHeader = op->header();
 
+	stable_sort(defaultHeader.begin(), defaultHeader.end(),
+	    [&tablesNames](const std::string &a, const std::string &b) {
+			std::string aTableName = table_name(a);
+			std::string bTableName = table_name(b);
+
+			if (aTableName == bTableName) {
+				return false;
+			}
+
+			for (size_t i = 0; i < tablesNames.size(); i++) {
+				if (tablesNames[i] == aTableName) {
+					return true;
+				}
+
+				if (tablesNames[i] == bTableName) {
+					return false;
+				}
+			}
+
+	        throw std::runtime_error("unknown attributes " + a + " " + b);
+	    }
+	);
+
+	return std::make_unique<Projection>(std::move(op), std::move(defaultHeader));
+}
+
+std::unique_ptr<Operator> create_plan(const Query &query) {
+	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = getQueryOperators(query);
+
+	// !!!
 	PredicatesLists predicatesLists = createPredicatesLists(query);
 
 	for (ConstPredicate *predicate : predicatesLists.filterPredicates) {
@@ -253,7 +309,7 @@ std::unique_ptr<Operator> create_plan(const Query &query) {
 		);
 	}
 
-	return resultingOperator;
+	return wrap_in_default_projection(std::move(resultingOperator), getTablesNames(query));
 
     /*std::vector<Source> sources;
     for(const auto &table : query.from){
