@@ -336,7 +336,29 @@ std::unique_ptr<Operator> create_plan(const Query &query) {
 		);
 	}
 
-	return wrap_in_default_projection(std::move(resultingOperator), getTablesNames(query));
+	switch (query.selection.type) {
+		case ToyDBMS::SelectionClause::Type::ALL: {
+			return wrap_in_default_projection(std::move(resultingOperator), getTablesNames(query));
+		}
+
+		case ToyDBMS::SelectionClause::Type::LIST: {
+			Header header;
+			header.reserve(query.selection.attrs.size());
+
+			for (const SelectionPart &attr : query.selection.attrs) {
+				if (attr.function != ToyDBMS::SelectionPart::AggregateFunction::NONE) {
+					throw std::runtime_error("Unsupported aggregation function");
+				}
+
+				header.push_back(attr.attribute);
+			}
+
+			return std::make_unique<Projection>(std::move(resultingOperator), std::move(header));
+		}
+
+		default:
+			throw std::runtime_error("Unsupported selection clause");
+	}
 
     /*std::vector<Source> sources;
     for(const auto &table : query.from){
