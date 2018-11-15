@@ -1,5 +1,8 @@
+*.a
 *.o
+*.swp
 *exe
+*/dblexer.yy.cc
 */dbparser.tab.*
 */dbparser.output
 *.yy.cc
