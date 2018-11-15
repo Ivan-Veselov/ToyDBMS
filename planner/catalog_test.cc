@@ -7,8 +7,8 @@ int main(){
     for(const auto &kv : catalog.tables){
         const Table &table = kv.second;
         std::cout << table.name << ' ' << table.rows << '\n';
-        for(const auto &kv : kv.second.columns){
-            const Column &column = kv.second;
+        for(const auto &kv2 : kv.second.columns){
+            const Column &column = kv2.second;
             std::cout << "    " << column.name << ' ' << (column.unique ? "unique" :"not unique")
                       << ' '    << column.min  << ' ' << column.max << '\n';
         }
