@@ -12,12 +12,10 @@
 #include "../operators/projection.h"
 #include "../operators/aliasappender.h"
 
+#include "utils.h"
+#include "joins_applier.h"
+
 namespace ToyDBMS {
-
-static std::string table_name(std::string attribute_name){
-    return {attribute_name.begin(), std::find(attribute_name.begin(), attribute_name.end(), '.')};
-}
-
 struct PredicatesLists {
 	std::vector<AttributePredicate*> joinPredicates;
 
@@ -153,72 +151,6 @@ static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryOperat
 	return std::move(tables);
 }
 
-static std::vector<std::unique_ptr<Operator>> applyJoins(
-	std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
-	const std::vector<AttributePredicate*> &joinPredicates
-) {
-	std::unordered_set<std::string> usedTables(tables.size());
-	std::vector<bool> usedPredicates(joinPredicates.size(), false);
-
-	std::vector<std::unique_ptr<Operator>> isolatedTables;
-
-	for (std::pair<const std::string, std::unique_ptr<Operator>> &table : tables) {
-		if (usedTables.find(table.first) != usedTables.end()) {
-			continue;
-		}
-
-		usedTables.insert(table.first);
-		std::unique_ptr<Operator> currentRelation = std::move(table.second);
-
-		bool wasUpdated;
-		do {
-			wasUpdated = false;
-
-			for (size_t i = 0; i < joinPredicates.size(); i++) {
-				if (usedPredicates[i]) {
-					continue;
-				}
-
-				std::string leftAttribute = joinPredicates[i]->left;
-				std::string rightAttribute = joinPredicates[i]->right;
-				std::string leftTable = table_name(leftAttribute);
-				std::string rightTable = table_name(rightAttribute);
-
-				if (
-					usedTables.find(leftTable) == usedTables.end() &&
-					usedTables.find(rightTable) == usedTables.end()
-				) {
-					continue;
-				}
-
-				if (
-					usedTables.find(leftTable) != usedTables.end() &&
-					usedTables.find(rightTable) != usedTables.end()
-				) {
-					throw std::runtime_error("Cyclic dependencies in joins are not supported");
-				}
-
-				if (usedTables.find(leftTable) == usedTables.end()) {
-					std::swap(leftTable, rightTable);
-					std::swap(leftAttribute, rightAttribute);
-				}
-
-				currentRelation = std::make_unique<NLJoin>(
-					std::move(currentRelation), std::move(tables[rightTable]),
-					leftAttribute, rightAttribute
-				);
-				usedTables.insert(rightTable);
-				usedPredicates[i] = true;
-				wasUpdated = true;
-			}
-		} while (wasUpdated);
-
-		isolatedTables.push_back(std::move(currentRelation));
-	}
-
-	return isolatedTables;
-}
-
 static std::unique_ptr<Operator> wrap_in_default_projection(
 	std::unique_ptr<Operator> op,
 	const std::vector<std::string> &tablesNames
@@ -269,10 +201,8 @@ std::unique_ptr<Operator> create_plan(const Query &query) {
 		);
 	}
 
-	std::vector<std::unique_ptr<Operator>> isolatedTables = applyJoins(
-		tables,
-		predicatesLists.joinPredicates
-	);
+	std::vector<std::unique_ptr<Operator>> isolatedTables =
+		JoinsApplier(tables, predicatesLists.joinPredicates).applyJoins();
 
 	std::unique_ptr<Operator> resultingOperator = std::move(isolatedTables[0]);
 	for (size_t i = 1; i < isolatedTables.size(); i++) {

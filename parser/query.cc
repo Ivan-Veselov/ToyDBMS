@@ -56,7 +56,19 @@ void AttributePredicate::print(){
 }
 
 bool AttributePredicate::check(const Row &row){
-    throw std::runtime_error("not implemented");
+	switch (relation) {
+		case Relation::LESS:
+			return row[left] < row[right];
+
+		case Relation::EQUAL:
+			return row[left] == row[right];
+
+		case Relation::GREATER:
+			return row[left] > row[right];
+
+		default:
+			throw std::runtime_error("Unsupported Relation inside of AttributePredicate");
+	}
 }
 
 void QueryPredicate::print(){
