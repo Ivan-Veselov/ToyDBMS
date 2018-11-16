@@ -19,7 +19,7 @@ namespace ToyDBMS {
 struct PredicatesLists {
 	std::vector<AttributePredicate*> joinPredicates;
 
-	std::vector<ConstPredicate*> filterPredicates;
+	std::vector<Predicate*> filterPredicates;
 };
 
 static void for_each_simple_predicate(Predicate &predicate, std::function<void(Predicate&)> action) {
@@ -59,7 +59,7 @@ static const PredicatesLists createPredicatesLists(const Query &query) {
 		[&lists](auto &pred) {
 			switch(pred.type) {
 				case Predicate::Type::CONST: {
-					lists.filterPredicates.push_back(&dynamic_cast<ConstPredicate&>(pred));
+					lists.filterPredicates.push_back(&pred);
 					break;
 				}
 
@@ -70,7 +70,12 @@ static const PredicatesLists createPredicatesLists(const Query &query) {
 						throw std::runtime_error("Inequality attribute predicates are not yet supported");
 					}
 
-					lists.joinPredicates.push_back(&attributePredicate);
+					if (table_name(attributePredicate.left) == table_name(attributePredicate.right)) {
+						lists.filterPredicates.push_back(&pred);
+					} else {
+						lists.joinPredicates.push_back(&attributePredicate);
+					}
+
 					break;
 				}
 
@@ -188,8 +193,24 @@ std::unique_ptr<Operator> create_plan(const Query &query) {
 
 	PredicatesLists predicatesLists = createPredicatesLists(query);
 
-	for (ConstPredicate *predicate : predicatesLists.filterPredicates) {
-		std::string tableName = table_name(predicate->attribute);
+	for (Predicate *predicate : predicatesLists.filterPredicates) {
+		std::string tableName;
+		std::unique_ptr<Predicate> predicateCopy;
+
+		switch (predicate->type) {
+			case Predicate::Type::CONST:
+				tableName = table_name(((ConstPredicate*) predicate)->attribute);
+				predicateCopy = std::make_unique<ConstPredicate>(* ((ConstPredicate*) predicate));
+				break;
+
+			case Predicate::Type::ATTR:
+				tableName = table_name(((AttributePredicate*) predicate)->left);
+				predicateCopy = std::make_unique<AttributePredicate>(* ((AttributePredicate*) predicate));
+				break;
+
+			default:
+				throw std::runtime_error("Unsupported filter predicate");
+		}
 
 		auto it = tables.find(tableName);
 		if (it == tables.end()) {
@@ -197,7 +218,7 @@ std::unique_ptr<Operator> create_plan(const Query &query) {
 		}
 
 		tables[tableName] = std::make_unique<Filter>(
-			std::move(tables[tableName]), std::move(std::make_unique<ConstPredicate>(*predicate))
+			std::move(tables[tableName]), std::move(predicateCopy)
 		);
 	}
 
