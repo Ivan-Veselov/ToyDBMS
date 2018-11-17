@@ -9,7 +9,8 @@ class Print : public Operator {
     std::unique_ptr<Operator> child;
     bool first = true;
 public:
-    Print(std::unique_ptr<Operator> child): child(std::move(child)) {}
+    Print(std::unique_ptr<Operator> child): child(std::move(child)) {
+    }
 
     const Header &header() override { return child->header(); }
 

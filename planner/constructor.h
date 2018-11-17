@@ -4,7 +4,13 @@
 #include "../operators/operator.h"
 
 namespace ToyDBMS {
+	class ConstructedQuery {
+		private:
+			std::unique_ptr<Operator> resultingOperator;
 
-std::unique_ptr<Operator> create_plan(const Query &query);
+		public:
+			ConstructedQuery(const Query &query);
 
+			std::unique_ptr<Operator> takeOperator();
+	};
 }

@@ -12,7 +12,7 @@ int main(){
         if(*line == '\0') continue;
         try {
             const Query &q = Query::parse(line);
-            Print p(create_plan(q));
+            Print p(ConstructedQuery(q).takeOperator());
             while(p.next());
         } catch(std::exception &e){
             std::cerr << e.what() << '\n';

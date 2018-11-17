@@ -143,7 +143,7 @@ static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryOperat
 
 				std::string alias = fromQuery.alias;
 				tables[alias] = std::make_unique<AliasAppender>(
-					std::move(create_plan(*fromQuery.query)),
+					std::move(ConstructedQuery(*fromQuery.query).takeOperator()),
 					alias
 				);
 
@@ -190,7 +190,7 @@ static std::unique_ptr<Operator> wrap_in_default_projection(
 	return std::make_unique<Projection>(std::move(op), std::move(defaultHeader));
 }
 
-std::unique_ptr<Operator> create_plan(const Query &query) {
+ConstructedQuery::ConstructedQuery(const Query &query) {
 	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = getQueryOperators(query);
 
 	PredicatesLists predicatesLists = createPredicatesLists(query);
@@ -226,7 +226,7 @@ std::unique_ptr<Operator> create_plan(const Query &query) {
 	std::vector<std::unique_ptr<Operator>> isolatedTables =
 		JoinsApplier(tables, predicatesLists.joinPredicates).applyJoins();
 
-	std::unique_ptr<Operator> resultingOperator = std::move(isolatedTables[0]);
+	resultingOperator = std::move(isolatedTables[0]);
 	for (size_t i = 1; i < isolatedTables.size(); i++) {
 		resultingOperator = std::make_unique<CrossJoin>(
 			std::move(resultingOperator), std::move(isolatedTables[i])
@@ -235,7 +235,8 @@ std::unique_ptr<Operator> create_plan(const Query &query) {
 
 	switch (query.selection.type) {
 		case ToyDBMS::SelectionClause::Type::ALL: {
-			return wrap_in_default_projection(std::move(resultingOperator), getTablesNames(query));
+			resultingOperator = wrap_in_default_projection(std::move(resultingOperator), getTablesNames(query));
+			return;
 		}
 
 		case ToyDBMS::SelectionClause::Type::LIST: {
@@ -250,12 +251,17 @@ std::unique_ptr<Operator> create_plan(const Query &query) {
 				header.push_back(attr.attribute);
 			}
 
-			return std::make_unique<Projection>(std::move(resultingOperator), std::move(header));
+			resultingOperator = std::make_unique<Projection>(std::move(resultingOperator), std::move(header));
+			return;
 		}
 
 		default:
 			throw std::runtime_error("Unsupported selection clause");
 	}
+}
+
+std::unique_ptr<Operator> ConstructedQuery::takeOperator() {
+	return std::move(resultingOperator);
 }
 
 }
