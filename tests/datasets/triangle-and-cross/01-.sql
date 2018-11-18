@@ -1,1 +1,0 @@
-select * from A, B, C, D, E, F where A.a = B.a and B.b = C.b and C.c = A.c and D.a = E.a and D.b = E.b and D.c = E.c and E.a = F.a and E.b = F.b and E.c = F.c and F.a = D.a and F.b = D.b and F.c = D.c;

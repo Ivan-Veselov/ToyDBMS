@@ -7,6 +7,7 @@ using namespace ToyDBMS;
 
 int main(){
     try {
+    	std::cout.sync_with_stdio(false);
         Print p {ConstructedQuery(Query::parse(std::cin)).takeOperator()};
         while(p.next());
         return 0;

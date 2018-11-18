@@ -8,6 +8,8 @@
 using namespace ToyDBMS;
 
 int main(){
+	std::cout.sync_with_stdio(false);
+
     while(char *line = readline("> ")){
         if(*line == '\0') continue;
         try {
