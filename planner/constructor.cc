@@ -70,13 +70,13 @@ static const PredicatesLists createPredicatesLists(const Query &query) {
 				case Predicate::Type::ATTR: {
 					AttributePredicate& attributePredicate = dynamic_cast<AttributePredicate&>(pred);
 
-					if (attributePredicate.relation != Predicate::Relation::EQUAL) {
-						throw std::runtime_error("Inequality attribute predicates are not yet supported");
-					}
-
 					if (table_name(attributePredicate.left) == table_name(attributePredicate.right)) {
 						lists.attributesFilterPredicates.push_back(&attributePredicate);
 					} else {
+						if (attributePredicate.relation != Predicate::Relation::EQUAL) {
+							throw std::runtime_error("Inequality attribute predicates are not yet supported");
+						}
+
 						lists.joinPredicates.push_back(&attributePredicate);
 					}
 
