@@ -5,6 +5,8 @@
 #include "../operators/filter.h"
 #include "../operators/join.h"
 
+#include "catalog.h"
+
 #include <unordered_set>
 #include <unordered_map>
 
@@ -13,14 +15,26 @@ namespace ToyDBMS {
 		private:
 			std::unordered_map<std::string, std::unique_ptr<Operator>> &tables;
 			const std::vector<AttributePredicate*> &joinPredicates;
+			const Catalog &catalog;
+
+			std::unordered_set<std::string> usedTables;
+			std::vector<bool> usedPredicates;
 
 		public:
 			JoinsApplier(
 				std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
-				const std::vector<AttributePredicate*> &joinPredicates
-			) : tables(tables), joinPredicates(joinPredicates) {
+				const std::vector<AttributePredicate*> &joinPredicates,
+				const Catalog &catalog
+			) : tables(tables),
+				joinPredicates(joinPredicates),
+				catalog(catalog),
+				usedTables(tables.size()),
+				usedPredicates(joinPredicates.size(), false) {
 			}
 
 			std::vector<std::unique_ptr<Operator>> applyJoins();
+
+		private:
+			int findNextJoinPredicate();
 	};
 }

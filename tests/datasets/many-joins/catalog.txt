@@ -1,0 +1,11 @@
+C 5
+    id INT ASC UNIQUE 1 5
+    aid INT ASC UNIQUE 1 5
+B 5
+    id INT ASC UNIQUE 1 5
+    aid INT ASC UNIQUE 1 5
+D 5
+    id INT ASC UNIQUE 1 5
+    aid INT ASC UNIQUE 1 5
+A 5
+    id INT ASC UNIQUE 1 5

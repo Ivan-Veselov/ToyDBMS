@@ -1,0 +1,10 @@
+C 2
+    id INT ASC UNIQUE 1 2
+B 2
+    id INT ASC UNIQUE 1 2
+    aid INT ASC UNIQUE 1 2
+D 2
+    id INT ASC UNIQUE 1 2
+    cid INT ASC UNIQUE 1 2
+A 2
+    id INT ASC UNIQUE 1 2

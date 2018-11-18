@@ -315,7 +315,7 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 	}
 
 	std::vector<std::unique_ptr<Operator>> isolatedTables =
-		JoinsApplier(tables, predicatesLists.joinPredicates).applyJoins();
+		JoinsApplier(tables, predicatesLists.joinPredicates, catalog).applyJoins();
 
 	resultingOperator = std::move(isolatedTables[0]);
 	for (size_t i = 1; i < isolatedTables.size(); i++) {

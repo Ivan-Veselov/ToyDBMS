@@ -1,0 +1,5 @@
+t1.A.id	t1.B.id	t1.B.aid	t2.C.id	t2.D.id	t2.D.cid
+1	1	1	1	1	1
+2	2	2	1	1	1
+1	1	1	2	2	2
+2	2	2	2	2	2
