@@ -125,7 +125,9 @@ static std::vector<std::string> getTablesNames(const Query &query) {
 	return std::move(tables);
 }
 
-static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryOperators(const Query &query) {
+std::unordered_map<std::string, std::unique_ptr<Operator>> ConstructedQuery::processQueryOperators(
+	const Query &query
+) {
 	std::unordered_map<std::string, std::unique_ptr<Operator>> tables(query.from.size());
 
 	for (const std::unique_ptr<FromPart> &fromPart : query.from) {
@@ -142,10 +144,15 @@ static std::unordered_map<std::string, std::unique_ptr<Operator>> getQueryOperat
 				FromQuery& fromQuery = dynamic_cast<FromQuery&>(*fromPart);
 
 				std::string alias = fromQuery.alias;
+				ConstructedQuery constructedQuery(*fromQuery.query);
+
 				tables[alias] = std::make_unique<AliasAppender>(
-					std::move(ConstructedQuery(*fromQuery.query).takeOperator()),
+					std::move(constructedQuery.takeOperator()),
 					alias
 				);
+
+				Table queryTable = constructedQuery.getCatalog().joinToOneTable(alias);
+				catalog.tables.insert(std::make_pair(alias, queryTable));
 
 				break;
 			}
@@ -190,8 +197,26 @@ static std::unique_ptr<Operator> wrap_in_default_projection(
 	return std::make_unique<Projection>(std::move(op), std::move(defaultHeader));
 }
 
+void ConstructedQuery::createCatalog(const std::vector<std::string> &tablesNames) {
+	std::vector<std::string> tablesToDelete;
+	std::unordered_set<std::string> involvedTables(tablesNames.begin(), tablesNames.end());
+
+	for (const auto &kv : catalog.tables) {
+		if (involvedTables.find(kv.first) == involvedTables.end()) {
+			tablesToDelete.push_back(kv.first);
+		}
+	}
+
+	for (const std::string &tableName : tablesToDelete) {
+		catalog.tables.erase(tableName);
+	}
+}
+
 ConstructedQuery::ConstructedQuery(const Query &query) {
-	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = getQueryOperators(query);
+	std::vector<std::string> tablesNames = getTablesNames(query);
+	createCatalog(tablesNames);
+
+	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = processQueryOperators(query);
 
 	PredicatesLists predicatesLists = createPredicatesLists(query);
 
@@ -235,7 +260,7 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 
 	switch (query.selection.type) {
 		case ToyDBMS::SelectionClause::Type::ALL: {
-			resultingOperator = wrap_in_default_projection(std::move(resultingOperator), getTablesNames(query));
+			resultingOperator = wrap_in_default_projection(std::move(resultingOperator), tablesNames);
 			return;
 		}
 
@@ -258,6 +283,10 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 		default:
 			throw std::runtime_error("Unsupported selection clause");
 	}
+}
+
+const Catalog& ConstructedQuery::getCatalog() {
+	return catalog;
 }
 
 std::unique_ptr<Operator> ConstructedQuery::takeOperator() {
