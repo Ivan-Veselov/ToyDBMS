@@ -22,5 +22,10 @@ namespace ToyDBMS {
 			std::unordered_map<std::string, std::unique_ptr<Operator>> processQueryOperators(
 				const Query &query
 			);
+
+			void apply_const_filters(
+				std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
+				const std::vector<ConstPredicate*> &constFilterPredicates
+			);
 	};
 }

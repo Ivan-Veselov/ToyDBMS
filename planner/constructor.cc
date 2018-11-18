@@ -11,9 +11,11 @@
 #include "../operators/join.h"
 #include "../operators/projection.h"
 #include "../operators/aliasappender.h"
+#include "../operators/EmptyOperator.h"
 
 #include "utils.h"
 #include "joins_applier.h"
+#include "rewriter.h"
 
 namespace ToyDBMS {
 struct PredicatesLists {
@@ -212,15 +214,69 @@ void ConstructedQuery::createCatalog(const std::vector<std::string> &tablesNames
 	}
 }
 
-ConstructedQuery::ConstructedQuery(const Query &query) {
-	std::vector<std::string> tablesNames = getTablesNames(query);
-	createCatalog(tablesNames);
+static void make_every_table_empty(std::unordered_map<std::string, std::unique_ptr<Operator>> &tables) {
+	for (auto &kv : tables) {
+		kv.second = std::make_unique<EmptyOperator>(kv.second->header());
+	}
+}
 
-	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = processQueryOperators(query);
+void ConstructedQuery::apply_const_filters(
+	std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
+	const std::vector<ConstPredicate*> &constFilterPredicates
+) {
+	ColumnsBounds bounds = rewrite_const_filters(constFilterPredicates);
+	if (!bounds.isValid) {
+		make_every_table_empty(tables);
+		return;
+	}
 
-	PredicatesLists predicatesLists = createPredicatesLists(query);
 
-	for (ConstPredicate *predicate : predicatesLists.constFilterPredicates) {
+	std::vector<std::unique_ptr<ConstPredicate>> resultingConstFilterPredicates;
+	for (const auto &kv : bounds.columnExactValue) {
+		const Column &column = catalog.getColumn(kv.first);
+		if (kv.second < column.min || column.max < kv.second) {
+			make_every_table_empty(tables);
+			return;
+		}
+
+		resultingConstFilterPredicates.push_back(std::make_unique<ConstPredicate>(
+			kv.first, kv.second, Predicate::Relation::EQUAL
+		));
+	}
+
+	for (const auto &kv : bounds.columnUpperBound) {
+		const Column &column = catalog.getColumn(kv.first);
+		if (kv.second <= column.min) {
+			make_every_table_empty(tables);
+			return;
+		}
+
+		if (kv.second > column.max) {
+			continue;
+		}
+
+		resultingConstFilterPredicates.push_back(std::make_unique<ConstPredicate>(
+			kv.first, kv.second, Predicate::Relation::LESS
+		));
+	}
+
+	for (const auto &kv : bounds.columnLowerBound) {
+		const Column &column = catalog.getColumn(kv.first);
+		if (kv.second >= column.max) {
+			make_every_table_empty(tables);
+			return;
+		}
+
+		if (kv.second < column.min) {
+			continue;
+		}
+
+		resultingConstFilterPredicates.push_back(std::make_unique<ConstPredicate>(
+			kv.first, kv.second, Predicate::Relation::GREATER
+		));
+	}
+
+	for (const std::unique_ptr<ConstPredicate> &predicate : resultingConstFilterPredicates) {
 		std::string tableName = table_name(predicate->attribute);
 		std::unique_ptr<Predicate> predicateCopy = std::make_unique<ConstPredicate>(*predicate);
 
@@ -233,6 +289,16 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 			std::move(tables[tableName]), std::move(predicateCopy)
 		);
 	}
+}
+
+ConstructedQuery::ConstructedQuery(const Query &query) {
+	std::vector<std::string> tablesNames = getTablesNames(query);
+	createCatalog(tablesNames);
+
+	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = processQueryOperators(query);
+	PredicatesLists predicatesLists = createPredicatesLists(query);
+
+	apply_const_filters(tables, predicatesLists.constFilterPredicates);
 
 	for (AttributePredicate *predicate : predicatesLists.attributesFilterPredicates) {
 		std::string tableName = table_name(predicate->left);

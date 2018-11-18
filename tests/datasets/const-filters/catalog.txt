@@ -1,0 +1,2 @@
+A 10
+    id INT ASC UNIQUE 0 9

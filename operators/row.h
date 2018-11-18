@@ -59,6 +59,14 @@ struct Value {
         default: throw std::runtime_error("unknown value type");
         }
     }
+
+    bool operator <= (const Value &other) const {
+    	return *this == other || *this < other;
+    }
+
+    bool operator >= (const Value &other) const {
+		return other <= *this;
+	}
 };
 
 struct Header : public std::vector<std::string> {

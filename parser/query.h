@@ -34,6 +34,9 @@ namespace ToyDBMS {
         ConstPredicate(std::string attr, std::string val, Relation rel)
             : Predicate(Type::CONST), attribute(attr), relation(rel), value(val) {}
 
+        ConstPredicate(std::string attr, Value val, Relation rel)
+			: Predicate(Type::CONST), attribute(attr), relation(rel), value(val) {}
+
         void print() override;
         bool check(const Row &row) override;
     };

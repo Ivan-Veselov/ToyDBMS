@@ -39,7 +39,7 @@ struct Catalog {
     const Table &operator[](const std::string &str){
         return tables.at(str);
     }
-    const Column &getColumn(const std::string &fullname){
+    const Column &getColumn(const std::string &fullname) const {
         auto sep = fullname.find('.');
         std::string table{fullname, 0, sep}, column{fullname, sep + 1};
         return tables.at(table).columns.at(column);
