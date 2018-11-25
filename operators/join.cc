@@ -4,25 +4,26 @@
 
 namespace ToyDBMS {
 
-Row AbstractNLJoin::next(){
-    if(!current_left)
+Row AbstractNLJoin::next() {
+    if (!current_left)
         current_left = left->next();
 
-    if(!current_left) return {};
+    if (!current_left) return {};
 
-    Row current_right = right->next();
-    while(true){
-        if(!current_right){
+    Row current_right;
+    while (true){
+        if (right_ptr == cachedRight.end()){
             current_left = left->next();
-            if(!current_left) return {};
+            if (!current_left) return {};
 
-            right->reset();
-            current_right = right->next();
-            if(!current_right) return {};
+            right_ptr = cachedRight.begin();
+            if (right_ptr == cachedRight.end()) return {};
         }
 
+        current_right = *right_ptr;
+        ++right_ptr;
+
         if (!isAcceptable(current_left, current_right)) {
-        	current_right = right->next();
 			continue;
         }
 
@@ -37,7 +38,7 @@ Row AbstractNLJoin::next(){
 
 void AbstractNLJoin::reset(){
     left->reset();
-    right->reset();
+    right_ptr = cachedRight.begin();
     current_left = {};
 }
 
