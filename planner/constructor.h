@@ -27,5 +27,10 @@ namespace ToyDBMS {
 				std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
 				const std::vector<ConstPredicate*> &constFilterPredicates
 			);
+
+			void apply_attribute_inequality_filters(
+				std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
+				const std::vector<AttributePredicate*> &inequalityPredicates
+			);
 	};
 }

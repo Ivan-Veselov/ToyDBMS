@@ -23,7 +23,7 @@ struct PredicatesLists {
 
 	std::vector<ConstPredicate*> constFilterPredicates;
 
-	std::vector<AttributePredicate*> attributesFilterPredicates;
+	std::vector<AttributePredicate*> attributesInequalityFilterPredicates;
 };
 
 static void for_each_simple_predicate(Predicate &predicate, std::function<void(Predicate&)> action) {
@@ -71,10 +71,14 @@ static const PredicatesLists createPredicatesLists(const Query &query) {
 					AttributePredicate& attributePredicate = dynamic_cast<AttributePredicate&>(pred);
 
 					if (table_name(attributePredicate.left) == table_name(attributePredicate.right)) {
-						lists.attributesFilterPredicates.push_back(&attributePredicate);
+						if (attributePredicate.relation == Predicate::Relation::EQUAL) {
+							throw std::runtime_error("Equality attribute filters are not yet supported");
+						}
+
+						lists.attributesInequalityFilterPredicates.push_back(&attributePredicate);
 					} else {
 						if (attributePredicate.relation != Predicate::Relation::EQUAL) {
-							throw std::runtime_error("Inequality attribute predicates are not yet supported");
+							throw std::runtime_error("Inequality join predicates are not yet supported");
 						}
 
 						lists.joinPredicates.push_back(&attributePredicate);
@@ -291,16 +295,19 @@ void ConstructedQuery::apply_const_filters(
 	}
 }
 
-ConstructedQuery::ConstructedQuery(const Query &query) {
-	std::vector<std::string> tablesNames = getTablesNames(query);
-	createCatalog(tablesNames);
+void ConstructedQuery::apply_attribute_inequality_filters(
+	std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
+	const std::vector<AttributePredicate*> &inequalityPredicates
+) {
+	AttributeInequalityFilters rewriterResult =
+		AttributeInequalitiesRewriter(inequalityPredicates).rewrite();
 
-	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = processQueryOperators(query);
-	PredicatesLists predicatesLists = createPredicatesLists(query);
+	if (!rewriterResult.isValid) {
+		make_every_table_empty(tables);
+		return;
+	}
 
-	apply_const_filters(tables, predicatesLists.constFilterPredicates);
-
-	for (AttributePredicate *predicate : predicatesLists.attributesFilterPredicates) {
+	for (AttributePredicate *predicate : rewriterResult.predicates) {
 		std::string tableName = table_name(predicate->left);
 		std::unique_ptr<Predicate> predicateCopy = std::make_unique<AttributePredicate>(*predicate);
 
@@ -313,6 +320,17 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 			std::move(tables[tableName]), std::move(predicateCopy)
 		);
 	}
+}
+
+ConstructedQuery::ConstructedQuery(const Query &query) {
+	std::vector<std::string> tablesNames = getTablesNames(query);
+	createCatalog(tablesNames);
+
+	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = processQueryOperators(query);
+	PredicatesLists predicatesLists = createPredicatesLists(query);
+
+	apply_const_filters(tables, predicatesLists.constFilterPredicates);
+	apply_attribute_inequality_filters(tables, predicatesLists.attributesInequalityFilterPredicates);
 
 	std::vector<std::unique_ptr<Operator>> isolatedTables =
 		JoinsApplier(tables, predicatesLists.joinPredicates, catalog).applyJoins();

@@ -106,4 +106,11 @@ namespace ToyDBMS {
 
 		return result;
 	}
+
+	AttributeInequalityFilters AttributeInequalitiesRewriter::rewrite() {
+		AttributeInequalityFilters result;
+
+		result.predicates = inequalityPredicates;
+		return result;
+	}
 }
