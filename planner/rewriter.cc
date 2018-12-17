@@ -107,10 +107,74 @@ namespace ToyDBMS {
 		return result;
 	}
 
+	AttributeInequalitiesRewriter::AttributeInequalitiesRewriter(
+		const std::vector<AttributePredicate*> &inequalityPredicates
+	) : inequalityPredicates(inequalityPredicates) {
+		for (AttributePredicate* predicate : inequalityPredicates) {
+			registerAttribute(predicate->left);
+			registerAttribute(predicate->right);
+		}
+	}
+
 	AttributeInequalityFilters AttributeInequalitiesRewriter::rewrite() {
 		AttributeInequalityFilters result;
 
-		result.predicates = inequalityPredicates;
+		for (AttributePredicate* predicate : inequalityPredicates) {
+			std::string less = predicate->left;
+			std::string greater = predicate->right;
+
+			if (less == greater) {
+				result.isValid = false;
+				return result;
+			}
+
+			if (predicate->relation == ToyDBMS::Predicate::Relation::GREATER) {
+				std::swap(less, greater);
+			}
+
+			if (setOfGreater[less].count(greater)) {
+				continue;
+			}
+
+			if (setOfGreater[greater].count(less)) {
+				result.isValid = false;
+				return result;
+			}
+
+			result.predicates.push_back(predicate);
+			addInequality(less, greater);
+		}
+
 		return result;
+	}
+
+	void AttributeInequalitiesRewriter::registerAttribute(const std::string &name) {
+		if (setOfGreater.count(name)) {
+			return;
+		}
+
+		setOfGreater.insert(
+			std::make_pair<std::string, std::unordered_set<std::string>>(
+				std::string(name),
+				std::unordered_set<std::string>()
+			)
+		);
+	}
+
+	void AttributeInequalitiesRewriter::addInequality(const std::string &less, const std::string &greater) {
+		if (setOfGreater[less].count(greater)) {
+			return;
+		}
+
+		setOfGreater[less].insert(greater);
+		for (const std::string &evenGreater : setOfGreater[greater]) {
+			addInequality(less, evenGreater);
+		}
+
+		for (const auto &kv : setOfGreater) {
+			if (kv.second.count(less)) {
+				addInequality(kv.first, greater);
+			}
+		}
 	}
 }

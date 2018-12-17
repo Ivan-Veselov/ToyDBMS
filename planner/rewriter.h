@@ -1,6 +1,7 @@
 #pragma once
 
 #include <memory>
+#include <unordered_set>
 #include <unordered_map>
 
 #include "../parser/query.h"
@@ -26,10 +27,16 @@ namespace ToyDBMS {
 	class AttributeInequalitiesRewriter {
 		const std::vector<AttributePredicate*> inequalityPredicates;
 
+		std::unordered_map<std::string, std::unordered_set<std::string>> setOfGreater;
+
 		public:
-			AttributeInequalitiesRewriter(const std::vector<AttributePredicate*> &inequalityPredicates)
-			: inequalityPredicates(inequalityPredicates) {}
+			AttributeInequalitiesRewriter(const std::vector<AttributePredicate*> &inequalityPredicates);
 
 			AttributeInequalityFilters rewrite();
+
+		private:
+			void registerAttribute(const std::string &name);
+
+			void addInequality(const std::string &less, const std::string &greater);
 	};
 }

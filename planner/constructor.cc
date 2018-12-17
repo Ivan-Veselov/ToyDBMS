@@ -12,6 +12,7 @@
 #include "../operators/projection.h"
 #include "../operators/aliasappender.h"
 #include "../operators/EmptyOperator.h"
+#include "../operators/unique.h"
 
 #include "utils.h"
 #include "joins_applier.h"
@@ -345,7 +346,7 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 	switch (query.selection.type) {
 		case ToyDBMS::SelectionClause::Type::ALL: {
 			resultingOperator = wrap_in_default_projection(std::move(resultingOperator), tablesNames);
-			return;
+			break;
 		}
 
 		case ToyDBMS::SelectionClause::Type::LIST: {
@@ -361,11 +362,15 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 			}
 
 			resultingOperator = std::make_unique<Projection>(std::move(resultingOperator), std::move(header));
-			return;
+			break;
 		}
 
 		default:
 			throw std::runtime_error("Unsupported selection clause");
+	}
+
+	if (query.distinct) {
+		resultingOperator = std::make_unique<Unique>(std::move(resultingOperator));
 	}
 }
 

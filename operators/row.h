@@ -5,6 +5,7 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <functional>
 
 namespace ToyDBMS {
 
@@ -110,6 +111,16 @@ struct Row {
         return values[header->index(attr)];
     }
 
+    bool operator==(const Row &other) const {
+    	for (size_t i = 0; i < values.size(); i++) {
+    		if (values[i] != other.values[i]) {
+    			return false;
+    		}
+    	}
+
+    	return true;
+    }
+
     size_type size() const { return values.size(); }
 
     operator bool(){ return !values.empty(); }
@@ -140,4 +151,42 @@ inline std::ostream &operator<<(std::ostream &os, const Row &row){
     return os;
 }
 
+}
+
+namespace std {
+template <>
+struct hash<ToyDBMS::Value> {
+	size_t operator()(const ToyDBMS::Value &v) const {
+		switch (v.type) {
+			case ToyDBMS::Value::Type::INT: {
+				std::hash<int> hasher;
+				return hasher(v.intval);
+			}
+
+			case ToyDBMS::Value::Type::STR: {
+				std::hash<std::string> hasher;
+				return hasher(v.strval);
+			}
+
+			default:
+				throw std::runtime_error("Unexpected Value type");
+		}
+	}
+};
+
+}
+
+namespace ToyDBMS {
+struct RowHasher {
+    size_t operator()(const Row &r) const {
+        std::hash<Value> hasher;
+
+        size_t seed = 0;
+        for (const Value &v : r.values) {
+            seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+        }
+
+        return seed;
+    }
+};
 }
