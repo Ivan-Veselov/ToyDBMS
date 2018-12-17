@@ -5,17 +5,11 @@
 namespace ToyDBMS {
 	class AbstractNLJoin : public Operator {
 		protected:
-			std::unique_ptr<Operator> left;
-			std::unique_ptr<Operator> right;
-
-
-			std::vector<Row>::iterator right_ptr;
+			std::unique_ptr<Operator> left, right;
 
 		private:
 			std::shared_ptr<Header> header_ptr;
 			Row current_left;
-
-			std::vector<Row> cachedRight;
 
 			Header construct_header(const Header &h1, const Header &h2){
 				Header res {h1};
@@ -28,15 +22,7 @@ namespace ToyDBMS {
 				: left(std::move(left)), right(std::move(right)),
 				  header_ptr(std::make_shared<Header>(
 					construct_header(this->left->header(), this->right->header()))
-				  ) {
-				Row current_right = this->right->next();
-				while (current_right) {
-					cachedRight.push_back(current_right);
-					current_right = this->right->next();
-				}
-
-				right_ptr = cachedRight.begin();
-			}
+				  ) {}
 
 			const Header &header() override { return *header_ptr; }
 			Row next() override;

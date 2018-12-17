@@ -13,6 +13,7 @@
 #include "../operators/aliasappender.h"
 #include "../operators/EmptyOperator.h"
 #include "../operators/unique.h"
+#include "../operators/cache.h"
 
 #include "utils.h"
 #include "joins_applier.h"
@@ -338,8 +339,10 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 
 	resultingOperator = std::move(isolatedTables[0]);
 	for (size_t i = 1; i < isolatedTables.size(); i++) {
+		std::unique_ptr<Operator> rightRelation = std::make_unique<Cache>(std::move(isolatedTables[i]));
+
 		resultingOperator = std::make_unique<CrossJoin>(
-			std::move(resultingOperator), std::move(isolatedTables[i])
+			std::move(resultingOperator), std::move(rightRelation)
 		);
 	}
 
