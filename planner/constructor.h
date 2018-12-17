@@ -32,5 +32,7 @@ namespace ToyDBMS {
 				std::unordered_map<std::string, std::unique_ptr<Operator>> &tables,
 				const std::vector<AttributePredicate*> &inequalityPredicates
 			);
+
+			std::vector<std::string> getOrderedAttributes(const Query &query);
 	};
 }

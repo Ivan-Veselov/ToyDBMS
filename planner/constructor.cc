@@ -13,6 +13,7 @@
 #include "../operators/aliasappender.h"
 #include "../operators/EmptyOperator.h"
 #include "../operators/unique.h"
+#include "../operators/OptimizedUnique.h"
 #include "../operators/cache.h"
 
 #include "utils.h"
@@ -324,9 +325,57 @@ void ConstructedQuery::apply_attribute_inequality_filters(
 	}
 }
 
+std::vector<std::string> ConstructedQuery::getOrderedAttributes(const Query &query) {
+	bool isAll = false;
+	std::unordered_set<std::string> attributesInProjection;
+
+	switch (query.selection.type) {
+		case ToyDBMS::SelectionClause::Type::ALL: {
+			isAll = true;
+			break;
+		}
+
+		case ToyDBMS::SelectionClause::Type::LIST: {
+			for (const SelectionPart &attr : query.selection.attrs) {
+				if (attr.function != ToyDBMS::SelectionPart::AggregateFunction::NONE) {
+					throw std::runtime_error("Unsupported aggregation function");
+				}
+
+				attributesInProjection.insert(attr.attribute);
+			}
+
+			break;
+		}
+
+		default:
+			throw std::runtime_error("Unsupported selection clause");
+	}
+
+	std::vector<std::string> orderedAttributes;
+	for (const auto &kv1 : catalog.tables) {
+		for (const auto &kv2 : kv1.second.columns) {
+			if (kv2.second.order != Column::SortOrder::ASC && kv2.second.order != Column::SortOrder::DESC) {
+				continue;
+			}
+
+			std::string attributeName = kv1.first + "." + kv2.first;
+
+			if (!isAll && attributesInProjection.find(attributeName) == attributesInProjection.end()) {
+				continue;
+			}
+
+			orderedAttributes.push_back(attributeName);
+		}
+	}
+
+	return std::move(orderedAttributes);
+}
+
 ConstructedQuery::ConstructedQuery(const Query &query) {
 	std::vector<std::string> tablesNames = getTablesNames(query);
 	createCatalog(tablesNames);
+
+	std::vector<std::string> orderedAttributes = getOrderedAttributes(query);
 
 	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = processQueryOperators(query);
 	PredicatesLists predicatesLists = createPredicatesLists(query);
@@ -334,8 +383,17 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 	apply_const_filters(tables, predicatesLists.constFilterPredicates);
 	apply_attribute_inequality_filters(tables, predicatesLists.attributesInequalityFilterPredicates);
 
-	std::vector<std::unique_ptr<Operator>> isolatedTables =
-		JoinsApplier(tables, predicatesLists.joinPredicates, catalog).applyJoins();
+	bool isOrdered = false;
+	std::string orderedBy;
+	std::vector<std::unique_ptr<Operator>> isolatedTables;
+
+	if (orderedAttributes.size() == 0) {
+		isolatedTables = JoinsApplier(tables, predicatesLists.joinPredicates, catalog).applyJoins();
+	} else {
+		isOrdered = true;
+		orderedBy = orderedAttributes[0];
+		isolatedTables = JoinsApplier(tables, predicatesLists.joinPredicates, catalog).applyJoins(table_name(orderedBy));
+	}
 
 	resultingOperator = std::move(isolatedTables[0]);
 	for (size_t i = 1; i < isolatedTables.size(); i++) {
@@ -373,7 +431,11 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 	}
 
 	if (query.distinct) {
-		resultingOperator = std::make_unique<Unique>(std::move(resultingOperator));
+		if (isOrdered) {
+			resultingOperator = std::make_unique<OptimizedUnique>(std::move(resultingOperator), orderedBy);
+		} else {
+			resultingOperator = std::make_unique<Unique>(std::move(resultingOperator));
+		}
 	}
 }
 

@@ -34,7 +34,11 @@ namespace ToyDBMS {
 
 			std::vector<std::unique_ptr<Operator>> applyJoins();
 
+			std::vector<std::unique_ptr<Operator>> applyJoins(const std::string &firstTable);
+
 		private:
+			std::unique_ptr<Operator> processTable(std::pair<const std::string, std::unique_ptr<Operator>> &table);
+
 			int findNextJoinPredicate();
 	};
 }

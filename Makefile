@@ -2,7 +2,7 @@ CXX = g++
 CXXFLAGS = -Wno-deprecated-register -O3 -Wall -std=c++14 #-DDBSCANDEBUG
 
 PARSEROBJ   = parser/parser.o parser/lexer.o parser/query.o
-OPERATOROBJ = operators/datasource.o operators/join.o operators/projection.o operators/unique.o operators/cache.o
+OPERATOROBJ = operators/datasource.o operators/join.o operators/projection.o operators/unique.o operators/OptimizedUnique.o operators/cache.o
 PLANNEROBJ  = planner/constructor.o planner/catalog.o planner/joins_applier.o planner/utils.o planner/rewriter.o
 
 all: parsertestexe plannertestexe testexe catalogtestexe
