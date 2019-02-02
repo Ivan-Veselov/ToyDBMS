@@ -27,4 +27,4 @@ inum,stext
 3,just another test
 ```
 
-If you know Russian you may check file `README-RUS.md` which contains more comprehensive description.
+If you know Russian you may check [README-RUS.md](https://github.com/Ivan-Veselov/ToyDBMS/blob/master/README-RUS.md) file which contains more comprehensive description.
