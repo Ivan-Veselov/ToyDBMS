@@ -325,13 +325,17 @@ void ConstructedQuery::apply_attribute_inequality_filters(
 	}
 }
 
-std::vector<std::string> ConstructedQuery::getOrderedAttributes(const Query &query) {
-	bool isAll = false;
+std::unordered_set<std::string> ConstructedQuery::getAttributesInResult(const Query &query) {
 	std::unordered_set<std::string> attributesInProjection;
 
 	switch (query.selection.type) {
 		case ToyDBMS::SelectionClause::Type::ALL: {
-			isAll = true;
+			for (const auto &kv1 : catalog.tables) {
+				for (const auto &kv2 : kv1.second.columns) {
+					attributesInProjection.insert(kv1.first + "." + kv2.first);
+				}
+			}
+
 			break;
 		}
 
@@ -351,6 +355,12 @@ std::vector<std::string> ConstructedQuery::getOrderedAttributes(const Query &que
 			throw std::runtime_error("Unsupported selection clause");
 	}
 
+	return attributesInProjection;
+}
+
+std::vector<std::string> ConstructedQuery::getOrderedAttributes(const Query &query) {
+	std::unordered_set<std::string> attributesInResult = getAttributesInResult(query);
+
 	std::vector<std::string> orderedAttributes;
 	for (const auto &kv1 : catalog.tables) {
 		for (const auto &kv2 : kv1.second.columns) {
@@ -360,7 +370,7 @@ std::vector<std::string> ConstructedQuery::getOrderedAttributes(const Query &que
 
 			std::string attributeName = kv1.first + "." + kv2.first;
 
-			if (!isAll && attributesInProjection.find(attributeName) == attributesInProjection.end()) {
+			if (attributesInResult.find(attributeName) == attributesInResult.end()) {
 				continue;
 			}
 
@@ -371,11 +381,54 @@ std::vector<std::string> ConstructedQuery::getOrderedAttributes(const Query &que
 	return std::move(orderedAttributes);
 }
 
+std::vector<std::string> ConstructedQuery::getUniqueAttributes(const Query &query) {
+	std::unordered_set<std::string> attributesInResult = getAttributesInResult(query);
+
+	std::vector<std::string> uniqueAttributes;
+	for (const auto &kv1 : catalog.tables) {
+		for (const auto &kv2 : kv1.second.columns) {
+			if (!kv2.second.unique) {
+				continue;
+			}
+
+			std::string attributeName = kv1.first + "." + kv2.first;
+
+			if (attributesInResult.find(attributeName) == attributesInResult.end()) {
+				continue;
+			}
+
+			uniqueAttributes.push_back(attributeName);
+		}
+	}
+
+	return std::move(uniqueAttributes);
+}
+
+std::string chooseTableWithMaxNumOfAttributes(const std::vector<std::string> &attributes) {
+	std::unordered_map<std::string, int> attributesFromTable;
+	for (const std::string &attribute : attributes) {
+		attributesFromTable[table_name(attribute)]++;
+	}
+
+	int maxAttributes = -1;
+	std::string table;
+
+	for (const auto &kv : attributesFromTable) {
+		if (kv.second > maxAttributes) {
+			maxAttributes = kv.second;
+			table = kv.first;
+		}
+	}
+
+	return table;
+}
+
 ConstructedQuery::ConstructedQuery(const Query &query) {
 	std::vector<std::string> tablesNames = getTablesNames(query);
 	createCatalog(tablesNames);
 
 	std::vector<std::string> orderedAttributes = getOrderedAttributes(query);
+	std::vector<std::string> uniqueAttributes = getUniqueAttributes(query);
 
 	std::unordered_map<std::string, std::unique_ptr<Operator>> tables = processQueryOperators(query);
 	PredicatesLists predicatesLists = createPredicatesLists(query);
@@ -384,23 +437,25 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 	apply_attribute_inequality_filters(tables, predicatesLists.attributesInequalityFilterPredicates);
 
 	bool isOrdered = false;
-	std::string orderedBy;
-	std::vector<std::unique_ptr<Operator>> isolatedTables;
+	std::string orderedTable = chooseTableWithMaxNumOfAttributes(orderedAttributes);
+	std::vector<JoinApplicationResult> isolatedTables;
 
 	if (orderedAttributes.size() == 0) {
 		isolatedTables = JoinsApplier(tables, predicatesLists.joinPredicates, catalog).applyJoins();
 	} else {
 		isOrdered = true;
-		orderedBy = orderedAttributes[0];
-		isolatedTables = JoinsApplier(tables, predicatesLists.joinPredicates, catalog).applyJoins(table_name(orderedBy));
+		isolatedTables = JoinsApplier(tables, predicatesLists.joinPredicates, catalog).applyJoins(orderedTable);
 	}
 
-	resultingOperator = std::move(isolatedTables[0]);
+	resultingOperator = std::move(isolatedTables[0].op);
 	for (size_t i = 1; i < isolatedTables.size(); i++) {
-		std::unique_ptr<Operator> rightRelation = std::make_unique<Cache>(std::move(isolatedTables[i]));
+		std::unique_ptr<Operator> rightOperator = std::move(isolatedTables[i].op);
+		if (isolatedTables[i].wasJoin) {
+			rightOperator = std::make_unique<Cache>(std::move(rightOperator));
+		}
 
 		resultingOperator = std::make_unique<CrossJoin>(
-			std::move(resultingOperator), std::move(rightRelation)
+			std::move(resultingOperator), std::move(rightOperator)
 		);
 	}
 
@@ -430,13 +485,60 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 			throw std::runtime_error("Unsupported selection clause");
 	}
 
+	bool failingTest = true;
+
+	if (!query.distinct) {
+		failingTest = false;
+	}
+
+	if (tablesNames.size() == 1) {
+		failingTest = false;
+	}
+
+	if (!isOrdered) {
+		failingTest = false;
+	}
+
+	if (isolatedTables.size() == 1) {
+		failingTest = false;
+	}
+
+	/*
+	if (getAttributesInResult(query).size() < 15) {
+		failingTest = false;
+	}
+
+	if (orderedAttributes.size() < 10) {
+		failingTest = false;
+	}*/
+
 	if (query.distinct) {
+		if (tablesNames.size() == 1 && uniqueAttributes.size() > 0) {
+			return;
+		}
+
 		if (isOrdered) {
-			resultingOperator = std::make_unique<OptimizedUnique>(std::move(resultingOperator), orderedBy);
+			std::vector<std::string> attributes;
+
+			if (tablesNames.size() == 1) {
+				attributes = orderedAttributes;
+			} else {
+				for (std::string &attribute : orderedAttributes) {
+					if (table_name(attribute) == orderedTable) {
+						attributes.push_back(attribute);
+					}
+				}
+			}
+
+			resultingOperator = std::make_unique<OptimizedUnique>(std::move(resultingOperator), attributes);
 		} else {
 			resultingOperator = std::make_unique<Unique>(std::move(resultingOperator));
 		}
 	}
+
+	/*if (failingTest) {
+		throw std::runtime_error("!!!");
+	}*/
 }
 
 const Catalog& ConstructedQuery::getCatalog() {

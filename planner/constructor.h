@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <unordered_set>
 #include "../parser/query.h"
 #include "../operators/operator.h"
 #include "catalog.h"
@@ -34,5 +35,9 @@ namespace ToyDBMS {
 			);
 
 			std::vector<std::string> getOrderedAttributes(const Query &query);
+
+			std::vector<std::string> getUniqueAttributes(const Query &query);
+
+			std::unordered_set<std::string> getAttributesInResult(const Query &query);
 	};
 }

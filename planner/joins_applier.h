@@ -11,6 +11,16 @@
 #include <unordered_map>
 
 namespace ToyDBMS {
+	struct JoinApplicationResult {
+		bool wasJoin;
+
+		std::unique_ptr<Operator> op;
+
+		JoinApplicationResult(bool wasJoin, std::unique_ptr<Operator> op)
+		: wasJoin(wasJoin), op(std::move(op)) {
+		}
+	};
+
 	class JoinsApplier {
 		private:
 			std::unordered_map<std::string, std::unique_ptr<Operator>> &tables;
@@ -32,12 +42,12 @@ namespace ToyDBMS {
 				usedPredicates(joinPredicates.size(), false) {
 			}
 
-			std::vector<std::unique_ptr<Operator>> applyJoins();
+			std::vector<JoinApplicationResult> applyJoins();
 
-			std::vector<std::unique_ptr<Operator>> applyJoins(const std::string &firstTable);
+			std::vector<JoinApplicationResult> applyJoins(const std::string &firstTable);
 
 		private:
-			std::unique_ptr<Operator> processTable(std::pair<const std::string, std::unique_ptr<Operator>> &table);
+			JoinApplicationResult processTable(std::pair<const std::string, std::unique_ptr<Operator>> &table);
 
 			int findNextJoinPredicate();
 	};

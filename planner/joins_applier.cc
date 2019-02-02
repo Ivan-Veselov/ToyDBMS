@@ -2,6 +2,8 @@
 
 #include "utils.h"
 
+#include "../operators/cache.h"
+
 #include <algorithm>
 #include <sstream>
 #include <stdexcept>
@@ -9,40 +11,43 @@
 
 namespace ToyDBMS {
 
-std::vector<std::unique_ptr<Operator>> JoinsApplier::applyJoins() {
+std::vector<JoinApplicationResult> JoinsApplier::applyJoins() {
 	return applyJoins(tables.begin()->first);
 }
 
-std::vector<std::unique_ptr<Operator>> JoinsApplier::applyJoins(const std::string &firstTable) {
-	std::vector<std::unique_ptr<Operator>> isolatedTables;
+std::vector<JoinApplicationResult> JoinsApplier::applyJoins(const std::string &firstTable) {
+	std::vector<JoinApplicationResult> isolatedTables;
 
 	auto it = tables.find(firstTable);
 	if (it == tables.end()) {
 		throw std::runtime_error("Unknown table!");
 	}
 
-	isolatedTables.push_back(std::move(processTable(*it)));
+	isolatedTables.push_back(processTable(*it));
 
 	for (std::pair<const std::string, std::unique_ptr<Operator>> &table : tables) {
 		if (usedTables.find(table.first) != usedTables.end()) {
 			continue;
 		}
 
-		isolatedTables.push_back(std::move(processTable(table)));
+		isolatedTables.push_back(processTable(table));
 	}
 
 	return isolatedTables;
 }
 
-std::unique_ptr<Operator> JoinsApplier::processTable(std::pair<const std::string, std::unique_ptr<Operator>> &table) {
+JoinApplicationResult JoinsApplier::processTable(std::pair<const std::string, std::unique_ptr<Operator>> &table) {
 	usedTables.insert(table.first);
 	std::unique_ptr<Operator> currentRelation = std::move(table.second);
 
+	bool wasJoin = false;
 	while (true) {
 		int i = findNextJoinPredicate();
 		if (i == -1) {
 			break;
 		}
+
+		wasJoin = true;
 
 		std::string leftAttribute = joinPredicates[i]->left;
 		std::string rightAttribute = joinPredicates[i]->right;
@@ -85,7 +90,7 @@ std::unique_ptr<Operator> JoinsApplier::processTable(std::pair<const std::string
 		}
 	}
 
-	return std::move(currentRelation);
+	return JoinApplicationResult(wasJoin, std::move(currentRelation));
 }
 
 int JoinsApplier::findNextJoinPredicate() {

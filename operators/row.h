@@ -174,19 +174,27 @@ struct hash<ToyDBMS::Value> {
 	}
 };
 
+template <>
+struct hash<std::vector<ToyDBMS::Value>> {
+    size_t operator()(const std::vector<ToyDBMS::Value> &values) const {
+        std::hash<ToyDBMS::Value> hasher;
+
+        size_t seed = 0;
+        for (const ToyDBMS::Value &v : values) {
+            seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
+        }
+
+        return seed;
+    }
+};
+
 }
 
 namespace ToyDBMS {
 struct RowHasher {
     size_t operator()(const Row &r) const {
-        std::hash<Value> hasher;
-
-        size_t seed = 0;
-        for (const Value &v : r.values) {
-            seed ^= hasher(v) + 0x9e3779b9 + (seed<<6) + (seed>>2);
-        }
-
-        return seed;
+        std::hash<std::vector<Value>> hasher;
+        return hasher(r.values);
     }
 };
 }
