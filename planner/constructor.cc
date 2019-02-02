@@ -485,24 +485,6 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 			throw std::runtime_error("Unsupported selection clause");
 	}
 
-	bool failingTest = true;
-
-	if (!query.distinct) {
-		failingTest = false;
-	}
-
-	if (tablesNames.size() == 1) {
-		failingTest = false;
-	}
-
-	if (!isOrdered) {
-		failingTest = false;
-	}
-
-	if (isolatedTables.size() == 1) {
-		failingTest = false;
-	}
-
 	/*
 	if (getAttributesInResult(query).size() < 15) {
 		failingTest = false;
@@ -535,10 +517,6 @@ ConstructedQuery::ConstructedQuery(const Query &query) {
 			resultingOperator = std::make_unique<Unique>(std::move(resultingOperator));
 		}
 	}
-
-	/*if (failingTest) {
-		throw std::runtime_error("!!!");
-	}*/
 }
 
 const Catalog& ConstructedQuery::getCatalog() {
